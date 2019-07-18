@@ -22,7 +22,6 @@ target/
 *.ipr
 *.iml
 *.iws
-vcs.xml
 
 #temp file
 *.log
