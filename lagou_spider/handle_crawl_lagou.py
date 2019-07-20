@@ -3,6 +3,7 @@ import re
 import time
 import json
 import multiprocessing
+from lagou_spider.handle_insert_data import lagou_mysql
 
 __author__ = 'alex'
 
@@ -19,12 +20,12 @@ class HandleLaGou:
 	
 	# 获取全国所有城市列表的方法
 	def handle_city(self):
-		city_search = re.compile(r'zhaopin/">(.*?)</a>')
+		city_search = re.compile(r'www\.lagou\.com\/.*\/">(.*?)</a>')
 		city_url = 'https://www.lagou.com/jobs/allCity.html'
 		city_result = self.handle_request(method='GET', url=city_url)
 		self.city_list = city_search.findall(city_result)
 		self.lagou_session.cookies.clear()
-		
+	
 	def handle_city_job(self, city):
 		first_request_url = "https://www.lagou.com/jobs/list_python?&px=default&city=%s" % city
 		first_response = self.handle_request(method='GET', url=first_request_url)
@@ -46,16 +47,46 @@ class HandleLaGou:
 			lagou_data = json.loads(response)
 			job_list = lagou_data['content']['positionResult']['result']
 			for job in job_list:
-				print(job)
+				lagou_mysql.insert_item(job)
 	
 	def handle_request(self, method, url, data=None, info=None):
 		while True:
-			if method == "GET":
-				response = self.lagou_session.get(url=url, headers=self.header)
-			elif method == "POST":
-				response = self.lagou_session.post(url=url, headers=self.header, data=data)
+			# 代理服务器
+			proxyHost = "http-dyn.abuyun.com"
+			proxyPort = "9020"
+			
+			# 代理隧道验证信息
+			proxyUser = "H184E59944C9TN4D"
+			proxyPass = "2A3B24432F703796"
+			
+			proxyMeta = "http://%(user)s:%(pass)s@%(host)s:%(port)s" % {
+				"host": proxyHost,
+				"port": proxyPort,
+				"user": proxyUser,
+				"pass": proxyPass,
+			}
+			
+			proxies = {
+				"http": proxyMeta,
+				"https": proxyMeta,
+			}
+			
+			try:
+				if method == "GET":
+					response = self.lagou_session.get(url=url, headers=self.header, proxies=proxies, timeout=6)
+				elif method == "POST":
+					response = self.lagou_session.post(url=url, headers=self.header, data=data, proxies=proxies, timeout=6)
+			except:
+				# 需要先清除cookies信息
+				self.lagou_session.cookies.clear()
+				# 重新获取cookies信息
+				first_request_url = "https://www.lagou.com/jobs/list_python?&px=default&city=%s" % info
+				self.handle_request(method='GET', url=first_request_url)
+				time.sleep(10)
+				continue
 			response.encoding = 'utf-8'
 			if '频繁' in response.text:
+				print(response.text)
 				self.lagou_session.cookies.clear()
 				first_request_url = "https://www.lagou.com/jobs/list_python?&px=default&city=%s" % info
 				self.handle_request(method='GET', url=first_request_url)
